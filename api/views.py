@@ -404,7 +404,6 @@ class DashboardNotificationLists(generics.ListAPIView):
         return api_models.Notification.objects.filter(seen=False, user=user)
 
 
-
 class DashboardMarkNotiSeenAPIView(APIView):
     @swagger_auto_schema(
         request_body=openapi.Schema(
