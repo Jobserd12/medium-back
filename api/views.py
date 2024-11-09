@@ -270,7 +270,9 @@ class PostCommentAPIView(APIView):
         name = request.data['name']
         email = request.data['email']
         comment = request.data['comment']
+        user_id = request.data['user_id']
 
+        user = api_models.User.objects.get(id=user_id)
         post = api_models.Post.objects.get(id=post_id)
 
         # Create Comment
@@ -286,8 +288,7 @@ class PostCommentAPIView(APIView):
             user=post.user,
             post=post,
             type="Comment",
-            # actor=user,
-            #! FALTA ACTOR EN NOTIFICACION, PARA ESO TOMAR EL USER ID DE USER DATA DESDE EL FRONT Y MANDATLO EN EL CUERPO
+            actor=user,
         )
 
         return Response({"message": "Commented Sent"}, status=status.HTTP_201_CREATED)
