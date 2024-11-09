@@ -156,7 +156,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = api_models.Notification
-        exclude = ['user'] 
+        exclude = ['user', "actor"] 
         
     def __init__(self, *args, **kwargs):
         super(NotificationSerializer, self).__init__(*args, **kwargs)
