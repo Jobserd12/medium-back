@@ -27,7 +27,11 @@ urlpatterns = [
     path('author/dashboard/stats/<user_id>/', views.DashboardStats.as_view()),
     path('author/dashboard/post-list/<user_id>/', views.DashboardPostLists.as_view()),
     path('author/dashboard/comment-list/', views.DashboardCommentLists.as_view()),
+    
     path('author/dashboard/noti-list/<user_id>/', views.DashboardNotificationLists.as_view()),
+    
+    path('notifications/<int:pk>/', views.NotificationDeleteAPIView.as_view(), name='notification-delete'),
+
     path('author/dashboard/noti-mark-seen/', views.DashboardMarkNotiSeenAPIView.as_view()),
     path('author/dashboard/reply-comment/', views.DashboardPostCommentAPIView.as_view()),
     

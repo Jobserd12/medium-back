@@ -402,7 +402,7 @@ class DashboardNotificationLists(generics.ListAPIView):
         user_id = self.kwargs['user_id']
         user = api_models.User.objects.get(id=user_id)
 
-        return api_models.Notification.objects.filter(seen=False, user=user)
+        return api_models.Notification.objects.filter(user=user)
 
 
 class DashboardMarkNotiSeenAPIView(APIView):
@@ -423,6 +423,15 @@ class DashboardMarkNotiSeenAPIView(APIView):
         noti.save()
 
         return Response({"message": "Noti Marked As Seen"}, status=status.HTTP_200_OK)
+
+
+from django.shortcuts import get_object_or_404
+
+class NotificationDeleteAPIView(APIView):    
+    def delete(self, request, pk):
+        notification = get_object_or_404(api_models.Notification, pk=pk)
+        notification.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 
