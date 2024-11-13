@@ -7,7 +7,9 @@ urlpatterns = [
     path('user/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('user/register/', views.RegisterView.as_view(), name='auth_register'),
     path('user/profile/<user_id>/', views.ProfileView.as_view(), name='user_profile'),
-    
+    path('follow/<int:user_id>/', views.FollowUserView.as_view(), name='follow-user'), 
+    path('unfollow/<int:user_id>/', views.UnfollowUserView.as_view(), name='unfollow-user'),
+                                                                                        
     # Post Endpoints
     #!! Mejorar ruta
     path('post/category/list/', views.CategoryListAPIView.as_view()),
@@ -37,4 +39,5 @@ urlpatterns = [
     
     path('author/dashboard/post-create/', views.DashboardPostCreateAPIView.as_view()),
     path('author/dashboard/post-detail/<user_id>/<post_id>/', views.DashboardPostEditAPIView.as_view()),
+
 ]

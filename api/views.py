@@ -41,17 +41,82 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = api_serializer.RegisterSerializer
 
 
+
 class ProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = (AllowAny,)
     serializer_class = api_serializer.ProfileSerializer
 
     def get_object(self):
         user_id = self.kwargs['user_id']
-
         user = api_models.User.objects.get(id=user_id)
         profile = api_models.Profile.objects.get(user=user)
         return profile
+
+    def retrieve(self, request, *args, **kwargs):
+        profile = self.get_object()
+        serializer = self.get_serializer(profile)
+
+        # Obtener los datos de seguidores y seguidos
+        follow_serializer = api_serializer.FollowSerializer(profile.user)
+
+        # Combinar los datos del perfil y los datos de seguidores/seguidos
+        data = serializer.data
+        data.update({
+            "followers_count": follow_serializer.data['followers_count'],
+            "following_count": follow_serializer.data['following_count'],
+            "followers": follow_serializer.data['followers'],
+            "following": follow_serializer.data['following']
+        })
+        return Response(data)
+
+ 
+class UserFollowView(generics.RetrieveAPIView): 
+    permission_classes = (AllowAny,) 
+    serializer_class = api_serializer.FollowSerializer 
     
+    def get_object(self): 
+        user_id = self.kwargs['user_id'] 
+        print("sadsa")
+        user = api_models.User.objects.get(id=user_id) 
+        return user
+
+class FollowUserView(generics.CreateAPIView):
+    serializer_class = api_serializer.FollowSerializer
+
+    def post(self, request, *args, **kwargs):
+        user_id = self.kwargs.get('user_id')
+        follower = request.user
+        try:
+            following = api_models.User.objects.get(id=user_id)
+        except api_models.User.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if api_models.Follow.objects.filter(follower=follower, following=following).exists():
+            return Response({"message": "You are already following this user"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        follow = api_models.Follow.objects.create(follower=follower, following=following)
+        return Response({"message": "Followed successfully"}, status=status.HTTP_201_CREATED)
+
+
+class UnfollowUserView(generics.DestroyAPIView):
+    serializer_class = api_serializer.FollowSerializer
+
+    def delete(self, request, *args, **kwargs):
+        user_id = self.kwargs.get('user_id')
+        follower = request.user
+        try:
+            following = api_models.User.objects.get(id=user_id)
+        except api_models.User.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            follow = api_models.Follow.objects.get(follower=follower, following=following)
+        except api_models.Follow.DoesNotExist:
+            return Response({"error": "You are not following this user"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        follow.delete()
+        return Response({"message": "Unfollowed successfully"}, status=status.HTTP_200_OK)
+   
 
 # def generate_numeric_otp(length=7):
 #         # Generate a random 7-digit OTP

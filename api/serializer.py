@@ -76,6 +76,23 @@ class ProfileSerializer(serializers.ModelSerializer):
 #     email = serializers.EmailField()
 
 
+class FollowSerializer(serializers.ModelSerializer):
+    followers_count = serializers.IntegerField(source='followers.count', read_only=True)
+    following_count = serializers.IntegerField(source='following.count', read_only=True)
+    followers = serializers.SerializerMethodField()
+    following = serializers.SerializerMethodField()
+
+    class Meta:
+        model = api_models.User
+        fields = ['id', 'username', 'email', 'full_name', 'followers_count', 'following_count', 'followers', 'following']
+
+    def get_followers(self, obj):
+        return [follower.follower.username for follower in obj.followers.all()]
+
+    def get_following(self, obj):
+        return [follow.following.username for follow in obj.following.all()]
+
+    
 
 class CategorySerializer(serializers.ModelSerializer):
     post_count = serializers.SerializerMethodField()
