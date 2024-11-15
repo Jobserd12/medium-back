@@ -47,8 +47,8 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = api_serializer.ProfileSerializer
 
     def get_object(self):
-        user_id = self.kwargs['user_id']
-        user = api_models.User.objects.get(id=user_id)
+        username = self.kwargs['username']
+        user = api_models.User.objects.get(username=username)
         profile = api_models.Profile.objects.get(user=user)
         return profile
 

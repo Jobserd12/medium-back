@@ -170,7 +170,8 @@ class PostSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):  
     actor_username = serializers.CharField(source='actor.username', read_only=True) 
-    
+    actor_profile = serializers.ImageField(source='actor.profile.image', read_only=True) 
+
     class Meta:
         model = api_models.Notification
         exclude = ['user', "actor"] 
