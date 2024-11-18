@@ -69,7 +69,28 @@ class ProfileView(generics.RetrieveUpdateAPIView):
             "following": follow_serializer.data['following']
         })
         return Response(data)
+    
+    def patch(self, request, *args, **kwargs):
+        profile = self.get_object()
+        mutable_data = request.data.copy()
 
+
+        if 'image' in mutable_data:
+            if mutable_data['image'] in [None, '', 'null', 'undefined']:
+                # Si la imagen es null, vacía o undefined, establecer la imagen por defecto
+                profile.image = 'default/default-user.webp'
+                profile.save()
+                del mutable_data['image']
+            elif isinstance(mutable_data['image'], str) and mutable_data['image'].startswith('http'):
+                # Si es una URL existente, mantener la imagen actual
+                del mutable_data['image']
+    
+        # Actualizar el perfil
+        serializer = self.get_serializer(profile, data=mutable_data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data)
  
 class UserFollowView(generics.RetrieveAPIView): 
     permission_classes = (IsAuthenticated,) 
