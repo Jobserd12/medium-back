@@ -118,6 +118,14 @@ class FollowToggleView(generics.GenericAPIView):
                 follower=follower,
                 following=following
             )
+            
+            api_models.Notification.objects.create(
+                user=following, 
+                type="Follow",
+                actor=follower,  
+                post=None 
+            )
+
             return Response({
                 "message": f"Ahora sigues a {following.username}",
                 "is_following": True
@@ -528,12 +536,17 @@ class DashboardMarkNotiSeenAPIView(APIView):
     
     def post(self, request):
         noti_id = request.data['noti_id']
-        noti = api_models.Notification.objects.get(id=noti_id)
+        try:
+            noti = api_models.Notification.objects.get(id=noti_id)
+            noti.seen = not noti.seen
+            noti.save()
 
-        noti.seen = True
-        noti.save()
-
-        return Response({"message": "Noti Marked As Seen"}, status=status.HTTP_200_OK)
+            if noti.seen: 
+                message = "Marked as read" 
+            else: message = "Marked as unread" 
+            return Response({"message": message},status=status.HTTP_200_OK) 
+        except api_models.Notification.DoesNotExist: 
+            return Response({"error": "Notification not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 from django.shortcuts import get_object_or_404
