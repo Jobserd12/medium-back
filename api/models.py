@@ -88,61 +88,219 @@ post_save.connect(save_user_profile, sender=User)
 
 
 
+
 class Category(models.Model):  
-    title = models.CharField(max_length=100)  
-    image = models.FileField(upload_to="image", null=True, blank=True)
-    slug = models.SlugField(unique=True, null=True, blank=True)  # parte de la URL
+    name = models.CharField(max_length=100)  
+    slug = models.SlugField(unique=True, null=True, blank=True) 
 
     def __str__(self):  
-        return self.title
+        return self.name
 
     class Meta:
         verbose_name_plural = "Category" 
 
     def save(self, *args, **kwargs):  # Sobreescribe el método save
-        if self.slug == "" or self.slug == None:  # Si no hay slug, genera uno a partir del título
-            self.slug = slugify(self.title)
+        if not self.slug: # Si no hay slug, genera uno a partir del título
+            self.slug = slugify(self.name)
         super(Category, self).save(*args, **kwargs)  # Llama al método save original para guardar la instancia
 
     def post_count(self): 
-        return Post.objects.filter(category=self).count()  # Cuenta las publicaciones relacionadas con esta categoría
+        return Post.objects.filter(category=self).count()  
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(unique=True)
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+
+class PostContentBlock(models.Model):
+    """
+    Modelo para almacenar bloques de contenido de manera flexible
+    Permite manejar texto, imágenes, videos y otros tipos de contenido
+    """
+    BLOCK_TYPES = (
+        ('text', 'Text'),
+        ('image', 'Image'),
+        ('video', 'Video'),
+        ('heading', 'Heading'),
+        ('quote', 'Quote'),
+        ('code', 'Code')
+    )
+
+    post = models.ForeignKey('Post', related_name='content_blocks', on_delete=models.CASCADE)
+    block_type = models.CharField(max_length=20, choices=BLOCK_TYPES)
+    order = models.PositiveIntegerField(default=0)
+    
+    # Campos para diferentes tipos de contenido
+    text_content = models.TextField(null=True, blank=True)
+    text_style = models.JSONField(null=True, blank=True)  # Para estilos de texto
+    
+    # Para imágenes
+    image = models.ImageField(
+        upload_to='post_images/', 
+        null=True, 
+        blank=True,
+        validators=[FileExtensionValidator(['png', 'jpg', 'jpeg', 'gif', 'webp'])]
+    )
+    image_caption = models.CharField(max_length=200, null=True, blank=True)
+    
+    # Para videos
+    video_url = models.URLField(null=True, blank=True)
+    video_platform = models.CharField(max_length=20, choices=[
+        ('youtube', 'YouTube'),
+        ('vimeo', 'Vimeo'),
+        ('custom', 'Custom Embed')
+    ], null=True, blank=True)
+
+    def clean(self):
+        # Validaciones específicas según el tipo de bloque
+        if self.block_type == 'text' and not self.text_content:
+            raise ValidationError('Text content is required for text blocks')
+        
+        if self.block_type == 'image' and not self.image:
+            raise ValidationError('Image is required for image blocks')
+        
+        if self.block_type == 'video' and not self.video_url:
+            raise ValidationError('Video URL is required for video blocks')
+
+    def __str__(self):
+        return f"{self.post.title} - {self.block_type} Block"
 
 
 class Post(models.Model):
-    STATUS = ( 
-        ("Active", "Active"), 
-        ("Draft", "Draft"),
-        ("Disabled", "Disabled"),
+    STATUS_CHOICES = (
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived')
     )
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True)
-    title = models.CharField(max_length=100)
-    image = models.FileField(upload_to="image", null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    tags = models.CharField(max_length=100)
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='posts')
-    status = models.CharField(max_length=100, choices=STATUS, default="Active")
-    view = models.IntegerField(default=0)
-    likes = models.ManyToManyField(User, blank=True, related_name="likes_user")
-    slug = models.SlugField(unique=True, null=True, blank=True)
-    date = models.DateTimeField(auto_now_add=True)
+    # Relaciones principales
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posts')
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='posts'
+    )
+    tags = models.ManyToManyField(Tag, related_name='posts', blank=True)
+
+    # Campos básicos
+    title = models.CharField(max_length=200)
+    short_description = models.TextField(max_length=500, null=True, blank=True)
     
-    def __str__(self):
-        return self.title
+    # Imagen representativa
+    featured_image = models.ImageField(
+        upload_to='featured_images/', 
+        null=True, 
+        blank=True,
+        validators=[FileExtensionValidator(['png', 'jpg', 'jpeg', 'gif', 'webp'])]
+    )
+
+    # Metadatos y estado
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='draft'
+    )
     
-    class Meta:
-        verbose_name_plural = "Post"
+    # SEO y URL
+    slug = models.SlugField(unique=True, max_length=255)
+    
+    # Métricas
+    views_count = models.PositiveIntegerField(default=0)
+    likes_count = models.PositiveIntegerField(default=0)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        if self.slug == "" or self.slug == None:
-            self.slug = slugify(self.title) + "-" + shortuuid.uuid()[:2]
-        super(Post, self).save(*args, **kwargs)
+        # Generar slug único
+        if not self.slug:
+            base_slug = slugify(self.title)
+            unique_slug = base_slug
+            counter = 1
+            while Post.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{base_slug}-{shortuuid.uuid()[:4]}"
+                counter += 1
+            self.slug = unique_slug
+
+        # Establecer fecha de publicación si cambia a estado publicado
+        if self.status == 'published' and not self.published_at:
+            self.published_at = timezone.now()
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = "Posts"
+
+
+# class Post(models.Model):
+#     STATUS = ( 
+#         ("Active", "Active"), 
+#         ("Draft", "Draft"),
+#         ("Disabled", "Disabled"),
+#     )
+
+#     user = models.ForeignKey(User, on_delete=models.CASCADE)
+#     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True)
+#     title = models.CharField(max_length=100)
+#     image = models.FileField(upload_to="image", null=True, blank=True)
+#     description = models.TextField(null=True, blank=True)
+#     tags = models.CharField(max_length=100)
+#     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='posts')
+#     status = models.CharField(max_length=100, choices=STATUS, default="Active")
+#     view = models.IntegerField(default=0)
+#     likes = models.ManyToManyField(User, blank=True, related_name="likes_user")
+#     slug = models.SlugField(unique=True, null=True, blank=True)
+#     date = models.DateTimeField(auto_now_add=True)
     
-    def comments(self):
-        return Comment.objects.filter(post=self).order_by("-id")
+#     def __str__(self):
+#         return self.title
+    
+#     class Meta:
+#         verbose_name_plural = "Post"
+
+#     def save(self, *args, **kwargs):
+#         if self.slug == "" or self.slug == None:
+#             self.slug = slugify(self.title) + "-" + shortuuid.uuid()[:2]
+#         super(Post, self).save(*args, **kwargs)
+    
+#     def comments(self):
+#         return Comment.objects.filter(post=self).order_by("-id")
 
     
+class UserLike(models.Model):
+    """
+    Modelo para rastrear likes con más detalle
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'post')
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Actualizar conteo de likes
+        self.post.likes_count = self.post.likes.count()
+        self.post.save()
+        
+
 class Comment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
