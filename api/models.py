@@ -4,6 +4,8 @@ from django.db.models.signals import post_save
 from django.utils.html import mark_safe
 from django.utils.text import slugify
 
+from django.core.validators import FileExtensionValidator 
+from django.core.exceptions import ValidationError
 from shortuuid.django_fields import ShortUUIDField
 import shortuuid
 
@@ -15,6 +17,9 @@ class User(AbstractUser):
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
+
+    class Meta:
+        db_table = 'user' 
 
     def __str__(self):
         return self.email
@@ -35,6 +40,7 @@ class Follow(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'follow' 
         unique_together = ('follower', 'following')
 
     def __str__(self):
@@ -55,6 +61,9 @@ class Profile(models.Model):
     twitter = models.CharField(max_length=100, null=True, blank=True)
     instagram = models.CharField(max_length=100, null=True, blank=True)
     date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'profile' 
 
     def __str__(self):
         if self.full_name:
@@ -97,12 +106,15 @@ class Category(models.Model):
         return self.name
 
     class Meta:
-        verbose_name_plural = "Category" 
+        db_table = 'category' 
+        verbose_name_plural = "Categories" 
 
     def save(self, *args, **kwargs):  # Sobreescribe el método save
-        if not self.slug: # Si no hay slug, genera uno a partir del título
+        # if not self.slug: 
+        if self.slug == "" or self.slug == None:
             self.slug = slugify(self.name)
         super(Category, self).save(*args, **kwargs)  # Llama al método save original para guardar la instancia
+
 
     def post_count(self): 
         return Post.objects.filter(category=self).count()  
@@ -112,6 +124,9 @@ class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(unique=True)
 
+    class Meta:
+        db_table = 'tag' 
+
     def __str__(self):
         return self.name
 
@@ -119,6 +134,7 @@ class Tag(models.Model):
         if not self.slug:
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
+
 
 
 class PostContentBlock(models.Model):
@@ -136,7 +152,7 @@ class PostContentBlock(models.Model):
     )
 
     post = models.ForeignKey('Post', related_name='content_blocks', on_delete=models.CASCADE)
-    block_type = models.CharField(max_length=20, choices=BLOCK_TYPES)
+    block_type = models.CharField(max_length=20, choices=BLOCK_TYPES, null=True, blank=True)
     order = models.PositiveIntegerField(default=0)
     
     # Campos para diferentes tipos de contenido
@@ -159,6 +175,9 @@ class PostContentBlock(models.Model):
         ('vimeo', 'Vimeo'),
         ('custom', 'Custom Embed')
     ], null=True, blank=True)
+
+    class Meta:
+        db_table = 'postContentBlock'
 
     def clean(self):
         # Validaciones específicas según el tipo de bloque
@@ -243,7 +262,9 @@ class Post(models.Model):
     def __str__(self):
         return self.title
 
+
     class Meta:
+        db_table = 'post'
         ordering = ['-created_at']
         verbose_name_plural = "Posts"
 
@@ -292,6 +313,7 @@ class UserLike(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'userLike'
         unique_together = ('user', 'post')
 
     def save(self, *args, **kwargs):
@@ -313,7 +335,8 @@ class Comment(models.Model):
         return f"{self.post.title} - {self.name}"
     
     class Meta:
-        verbose_name_plural = "Comment"
+        db_table = 'comment'
+        verbose_name_plural = "Comments"
 
 
 class Bookmark(models.Model):
@@ -323,9 +346,10 @@ class Bookmark(models.Model):
 
     def __str__(self):
         return f"{self.post.title} - {self.user.username}"
-    
+
     class Meta:
-        verbose_name_plural = "Bookmark"
+        db_table = 'bookmark'
+        verbose_name_plural = "Bookmarks"
 
 
 class Notification(models.Model):
@@ -338,7 +362,8 @@ class Notification(models.Model):
     actor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications_actor')
 
     class Meta:
-        verbose_name_plural = "Notification"
+        db_table = 'notification'
+        verbose_name_plural = "Notifications"
     
     def __str__(self):
         if self.post:

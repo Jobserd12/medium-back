@@ -10,10 +10,10 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ['thumbnail', 'user', 'full_name']
 
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ["title"]
+    list_display = ["name", "slug"]
 
-class PostAdmin(admin.ModelAdmin):
-    list_display = ["title","user","category","view"]
+# class PostAdmin(admin.ModelAdmin):
+#     list_display = ["title","user","category","view"]
 
 class CommentAdmin(admin.ModelAdmin):
     list_display = ["post","name","email","comment"]
@@ -35,7 +35,7 @@ class FollowAdmin(admin.ModelAdmin):
 admin.site.register(api_models.User, UserAdmin)
 admin.site.register(api_models.Profile, ProfileAdmin)
 admin.site.register(api_models.Category, CategoryAdmin)
-admin.site.register(api_models.Post, PostAdmin)
+# admin.site.register(api_models.Post, PostAdmin)
 admin.site.register(api_models.Comment, CommentAdmin)
 admin.site.register(api_models.Notification, NotificationAdmin)
 admin.site.register(api_models.Bookmark, BookmarkAdmin)
