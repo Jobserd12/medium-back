@@ -98,17 +98,165 @@ class CategorySerializer(serializers.ModelSerializer):
     post_count = serializers.SerializerMethodField()
 
     def get_post_count(self, category):
-        return category.posts.count()
-    
+            return category.posts.count()
+        
     class Meta:
         model = api_models.Category
+        fields = ['id', 'name', 'slug', 'post_count']
+
+
+# class CategorySerializer(serializers.ModelSerializer):
+#     post_count = serializers.SerializerMethodField()
+
+#     def get_post_count(self, category):
+#         return category.posts.count()
+    
+#     class Meta:
+#         model = api_models.Category
+#         fields = [
+#             "id",
+#             "title",
+#             "image",
+#             "slug",
+#             "post_count",
+#         ]
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = api_models.Tag
+        fields = ['id', 'name', 'slug']
+
+class PostContentBlockSerializer(serializers.ModelSerializer):
+    block_type = serializers.ChoiceField(
+        choices=api_models.PostContentBlock.BLOCK_TYPES, 
+        required=True,
+        default='text'  # Valor por defecto si no se proporciona
+    )
+    order = serializers.IntegerField(default=0)
+
+    class Meta:
+        model = api_models.PostContentBlock
         fields = [
-            "id",
-            "title",
-            "image",
-            "slug",
-            "post_count",
+            'id',
+            'block_type',
+            'order',
+            'text_content',
+            'text_style',
+            'image',
+            'image_caption',
+            'video_url',
+            'video_platform'
         ]
+        extra_kwargs = {
+            'text_content': {'required': False},
+            'image': {'required': False},
+            'video_url': {'required': False}
+        }
+
+    def validate(self, data):
+        # Validaciones específicas según el tipo de bloque
+        block_type = data.get('block_type')
+        
+        if block_type == 'text' and not data.get('text_content'):
+            data['text_content'] = ''
+        
+        if block_type == 'image' and not data.get('image'):
+            raise serializers.ValidationError("Image is required for image blocks")
+        
+        if block_type == 'video' and not data.get('video_url'):
+            raise serializers.ValidationError("Video URL is required for video blocks")
+        
+        return data
+
+class PostSerializer(serializers.ModelSerializer):
+    content_blocks = PostContentBlockSerializer(many=True, required=False)
+    category = CategorySerializer(read_only=True)
+    tags = TagSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = api_models.Post
+        fields = [
+            'id', 
+            'title', 
+            'short_description', 
+            'featured_image', 
+            'status', 
+            'slug', 
+            'views_count', 
+            'likes_count', 
+            'created_at', 
+            'updated_at', 
+            'published_at', 
+            'user', 
+            'category', 
+            'tags',
+            'content_blocks'
+        ]
+        read_only_fields = ['slug', 'views_count', 'likes_count', 'created_at', 'updated_at', 'published_at']
+
+    def create(self, validated_data):
+        # Extraer bloques de contenido del contexto
+        content_blocks_data = self.context.get('content_blocks', [])
+        
+        # Si no hay bloques de contenido, crear uno predeterminado
+        if not content_blocks_data:
+            content_blocks_data = [{
+                'block_type': 'text',
+                'text_content': validated_data.get('content', ''),
+                'order': 0
+            }]
+        
+        # Eliminar 'content' de los datos validados si existe
+        validated_data.pop('content', None)
+        
+        # Crear el post
+        post = super().create(validated_data)
+        
+        # Crear bloques de contenido
+        for block_data in content_blocks_data:
+            block_data['post'] = post
+            # Usar el serializador para crear y validar cada bloque
+            block_serializer = PostContentBlockSerializer(data=block_data)
+            block_serializer.is_valid(raise_exception=True)
+            block_serializer.save()
+        
+        return post
+
+    def update(self, instance, validated_data):
+        # Lógica similar para la actualización
+        content_blocks_data = self.context.get('content_blocks', [])
+        
+        # Actualizar campos del post
+        instance.title = validated_data.get('title', instance.title)
+        # ... otros campos ...
+
+        # Eliminar bloques de contenido existentes
+        instance.content_blocks.all().delete()
+        
+        # Crear nuevos bloques de contenido
+        for block_data in content_blocks_data:
+            block_data['post'] = instance
+            block_serializer = PostContentBlockSerializer(data=block_data)
+            block_serializer.is_valid(raise_exception=True)
+            block_serializer.save()
+        
+        return instance
+
+# class CategorySerializer(serializers.ModelSerializer):
+#     post_count = serializers.SerializerMethodField()
+
+#     def get_post_count(self, category):
+#         return category.posts.count()
+    
+#     class Meta:
+#         model = api_models.Category
+#         fields = [
+#             "id",
+#             "title",
+#             "image",
+#             "slug",
+#             "post_count",
+#         ]
 
     # def __init__(self, *args, **kwargs):
     #     super(CategorySerializer, self).__init__(*args, **kwargs)
@@ -151,21 +299,21 @@ class BookmarkSerializer(serializers.ModelSerializer):
             self.Meta.depth = 2
     
 
-class PostSerializer(serializers.ModelSerializer):
-    comments = CommentSerializer(many=True)
-    bookmarks = BookmarkSerializer(many=True, source='bookmark_set')
+# class PostSerializer(serializers.ModelSerializer):
+#     comments = CommentSerializer(many=True)
+#     bookmarks = BookmarkSerializer(many=True, source='bookmark_set')
 
-    class Meta:
-        model = api_models.Post
-        fields = "__all__"
+#     class Meta:
+#         model = api_models.Post
+#         fields = "__all__"
 
-    def __init__(self, *args, **kwargs):
-        super(PostSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 3
+#     def __init__(self, *args, **kwargs):
+#         super(PostSerializer, self).__init__(*args, **kwargs)
+#         request = self.context.get('request')
+#         if request and request.method == 'POST':
+#             self.Meta.depth = 0
+#         else:
+#             self.Meta.depth = 3
 
 
 class NotificationSerializer(serializers.ModelSerializer):  

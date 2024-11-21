@@ -151,46 +151,6 @@ class FollowToggleView(generics.GenericAPIView):
                 "message": f"Ahora sigues a {following.username}",
                 "is_following": True
             }, status=status.HTTP_201_CREATED)
-
-
-# class FollowUserView(generics.CreateAPIView):
-#     permission_classes = (IsAuthenticated,) 
-#     serializer_class = api_serializer.FollowSerializer
-
-#     def post(self, request, *args, **kwargs):
-#         user_id = self.kwargs['user_id']
-#         follower = request.user
-#         try:
-#             following = api_models.User.objects.get(id=user_id)
-#         except api_models.User.DoesNotExist:
-#             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-#         if api_models.Follow.objects.filter(follower=follower, following=following).exists():
-#             return Response({"message": "You are already following this user"}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         follow = api_models.Follow.objects.create(follower=follower, following=following)
-#         return Response({"message": "Followed successfully"}, status=status.HTTP_201_CREATED)
-
-
-# class UnfollowUserView(generics.DestroyAPIView):
-#     permission_classes = (IsAuthenticated,) 
-#     serializer_class = api_serializer.FollowSerializer
-
-#     def delete(self, request, *args, **kwargs):
-#         user_id = self.kwargs['user_id']
-#         follower = request.user
-#         try:
-#             following = api_models.User.objects.get(id=user_id)
-#         except api_models.User.DoesNotExist:
-#             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-#         try:
-#             follow = api_models.Follow.objects.get(follower=follower, following=following)
-#         except api_models.Follow.DoesNotExist:
-#             return Response({"error": "You are not following this user"}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         follow.delete()
-#         return Response({"message": "Unfollowed successfully"}, status=status.HTTP_200_OK)
    
 
 # def generate_numeric_otp(length=7):
@@ -309,6 +269,120 @@ class PostListAPIView(generics.ListAPIView):
     def get_queryset(self):
         return api_models.Post.objects.all()
     
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class PostViewSet(viewsets.ModelViewSet):
+    queryset = api_models.Post.objects.all()
+    serializer_class = api_serializer.PostSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'slug'
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Asegurarse de que los bloques de contenido se incluyan
+        content_blocks = self.request.data.get('content_blocks', [])
+        
+        # Si no hay bloques, crear uno por defecto
+        if not content_blocks and self.request.data.get('content'):
+            content_blocks = [{
+                'block_type': 'text',
+                'text_content': self.request.data.get('content', ''),
+                'order': 0
+            }]
+        
+        context.update({
+            'content_blocks': content_blocks,
+            'category_id': self.request.data.get('category'),
+            'tag_ids': self.request.data.get('tags', [])
+        })
+        return context
+
+    def create(self, request, *args, **kwargs):
+        # Ensure the post is associated with the current user
+        request.data['user'] = request.user.id
+        
+        # If no status is provided, default to draft
+        if 'status' not in request.data:
+            request.data['status'] = 'draft'
+        
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=True, methods=['PATCH'], url_path='update-status')
+    def update_post_status(self, request, slug=None):
+        """
+        Custom action to update post status
+        Allows changing status between draft, published, and archived
+        """
+        post = self.get_object()
+        
+        # Validate status
+        new_status = request.data.get('status')
+        if new_status not in dict(api_models.Post.STATUS_CHOICES):
+            return Response({
+                'error': 'Invalid status'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update status
+        post.status = new_status
+        post.save()
+        
+        # Serialize and return updated post
+        serializer = self.get_serializer(post)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['POST'], url_path='autosave')
+    def autosave_post(self, request):
+        """
+        Autosave endpoint for draft posts
+        If post exists, update. If not, create draft
+        Always returns a post identifier (slug)
+        """
+        # Preparar los datos para la creación o actualización
+        post_slug = request.data.get('slug')
+        
+        try:
+            # Preparar el contexto para el serializador
+            context = {
+                'content_blocks': request.data.get('content_blocks', []),
+                'category_id': request.data.get('category'),
+                'tag_ids': request.data.get('tags', [])
+            }
+            
+            # Intentar encontrar el post existente
+            if post_slug:
+                try:
+                    post = api_models.Post.objects.get(slug=post_slug, user=request.user)
+                    # Actualizar post existente
+                    serializer = self.get_serializer(post, data=request.data, partial=True, context=context)
+                except api_models.Post.DoesNotExist:
+                    # Si el slug no existe para este usuario, crear uno nuevo
+                    request.data['user'] = request.user.id
+                    request.data['status'] = 'draft'
+                    serializer = self.get_serializer(data=request.data, context=context)
+            else:
+                # Crear nuevo post si no hay slug
+                request.data['user'] = request.user.id
+                request.data['status'] = 'draft'
+                serializer = self.get_serializer(data=request.data, context=context)
+            
+            # Validar y guardar
+            serializer.is_valid(raise_exception=True)
+            post = serializer.save()
+            
+            # Devolver datos del post, enfocándose en el slug
+            return Response({
+                'slug': post.slug,
+                'id': post.id,
+                'title': post.title,
+                'status': post.status
+            }, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 class PopularPostsAPIView(generics.ListAPIView):
     serializer_class = api_serializer.PostSerializer
