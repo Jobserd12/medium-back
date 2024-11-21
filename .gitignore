@@ -1,0 +1,23 @@
+
+# Excluir archivos de entorno de desarrollo
+.enva
+.env
+
+# Excluir directorios de entornos virtuales de Python
+env/
+venv/
+.venv/
+
+# Excluir archivos y carpetas compilados por Python
+__pycache__/
+*.py[cod]
+
+# Excluir archivos y directorios generados por el sistema operativo
+.DS_Store
+Thumbs.db
+
+# Excluir archivos de log
+*.log
+
+# Excluir bases de datos SQLite
+*.sqlite3
