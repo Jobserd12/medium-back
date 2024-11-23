@@ -10,7 +10,7 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ['thumbnail', 'user', 'full_name']
 
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ["title"]
+    list_display = ["name", "slug"]
 
 class PostAdmin(admin.ModelAdmin):
     list_display = ["title","user","category","view"]
