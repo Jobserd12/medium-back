@@ -104,8 +104,7 @@ class CategorySerializer(serializers.ModelSerializer):
         model = api_models.Category
         fields = [
             "id",
-            "title",
-            "image",
+            "name",
             "slug",
             "post_count",
         ]
@@ -153,12 +152,23 @@ class BookmarkSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True)
+    profile = ProfileSerializer(source='user.profile', read_only=True) 
     bookmarks = BookmarkSerializer(many=True, source='bookmark_set')
 
     class Meta:
         model = api_models.Post
         fields = "__all__"
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        user_representation = {
+            'id': instance.user.id,
+            'username': instance.user.username,
+            'email': instance.user.email
+        }
+        representation['user'] = user_representation
+        return representation
+    
     def __init__(self, *args, **kwargs):
         super(PostSerializer, self).__init__(*args, **kwargs)
         request = self.context.get('request')

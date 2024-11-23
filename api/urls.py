@@ -8,38 +8,27 @@ urlpatterns = [
     path('user/register/', views.RegisterView.as_view(), name='auth_register'),
     path('user/profile/<str:username>/', views.ProfileView.as_view(), name='user_profile'),
     path('follow-toggle/<int:user_id>/', views.FollowToggleView.as_view(), name='follow-user'), 
-
-    # path('follow/<int:user_id>/', views.FollowUserView.as_view(), name='follow-user'), 
-    # path('unfollow/<int:user_id>/', views.UnfollowUserView.as_view(), name='unfollow-user'),
                                     
     # Post Endpoints
-    #!! Mejorar ruta
     path('post/category/list/', views.CategoryListAPIView.as_view()),
     path('post/category/posts/<category_slug>/', views.PostCategoryListAPIView.as_view()),
-    
     path('post/lists/', views.PostListAPIView.as_view()),
     path('post/list-popular/', views.PopularPostsAPIView.as_view()),
     path('post/detail/<slug>/', views.PostDetailAPIView.as_view()),
     path('post/increment-view/<slug>/', views.IncrementPostView.as_view()),
     path('post/search/', views.SearchPostsView.as_view()),
 
-    path('post/like-post/', views.LikePostAPIView.as_view()),
-    path('post/comment-post/', views.PostCommentAPIView.as_view()),
-    path('post/bookmark-post/', views.BookmarkPostAPIView.as_view()),
-    
-    # Dashboard APIS
-    path('author/dashboard/stats/<user_id>/', views.DashboardStats.as_view()),
-    path('author/dashboard/post-list/<user_id>/', views.DashboardPostLists.as_view()),
-    path('author/dashboard/comment-list/', views.DashboardCommentLists.as_view()),
-    
-    path('author/dashboard/noti-list/<user_id>/', views.DashboardNotificationLists.as_view()),
-    
-    path('notifications/<int:pk>/', views.NotificationDeleteAPIView.as_view(), name='notification-delete'),
-
-    path('author/dashboard/noti-mark-seen/', views.DashboardMarkNotiSeenAPIView.as_view()),
-    path('author/dashboard/reply-comment/', views.DashboardPostCommentAPIView.as_view()),
-    
-    path('author/dashboard/post-create/', views.DashboardPostCreateAPIView.as_view()),
-    path('author/dashboard/post-detail/<user_id>/<post_id>/', views.DashboardPostEditAPIView.as_view()),
+    path('admin/post/like-post/', views.LikePostAPIView.as_view()),
+    path('admin/post/bookmark-post/', views.BookmarkPostAPIView.as_view()),
+    path('admin/post/comment-post/', views.PostCommentAPIView.as_view()),
+    path('admin/stats/<user_id>/', views.DashboardStats.as_view()),
+    path('admin/post-list/<user_id>/', views.DashboardPostLists.as_view()),
+    path('admin/comment-list/', views.DashboardCommentLists.as_view()),
+    path('admin/noti-list/<user_id>/', views.DashboardNotificationLists.as_view()),
+    path('admin/notifications/<int:pk>/', views.NotificationDeleteAPIView.as_view(), name='notification-delete'),
+    path('admin/noti-mark-seen/', views.DashboardMarkNotiSeenAPIView.as_view()),
+    path('admin/reply-comment/', views.DashboardPostCommentAPIView.as_view()),
+    path('admin/post-create/', views.DashboardPostCreateAPIView.as_view()),
+    path('admin/post-detail/<user_id>/<post_id>/', views.DashboardPostEditAPIView.as_view()),
 
 ]

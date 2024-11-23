@@ -153,46 +153,6 @@ class FollowToggleView(generics.GenericAPIView):
             }, status=status.HTTP_201_CREATED)
 
 
-# class FollowUserView(generics.CreateAPIView):
-#     permission_classes = (IsAuthenticated,) 
-#     serializer_class = api_serializer.FollowSerializer
-
-#     def post(self, request, *args, **kwargs):
-#         user_id = self.kwargs['user_id']
-#         follower = request.user
-#         try:
-#             following = api_models.User.objects.get(id=user_id)
-#         except api_models.User.DoesNotExist:
-#             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-#         if api_models.Follow.objects.filter(follower=follower, following=following).exists():
-#             return Response({"message": "You are already following this user"}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         follow = api_models.Follow.objects.create(follower=follower, following=following)
-#         return Response({"message": "Followed successfully"}, status=status.HTTP_201_CREATED)
-
-
-# class UnfollowUserView(generics.DestroyAPIView):
-#     permission_classes = (IsAuthenticated,) 
-#     serializer_class = api_serializer.FollowSerializer
-
-#     def delete(self, request, *args, **kwargs):
-#         user_id = self.kwargs['user_id']
-#         follower = request.user
-#         try:
-#             following = api_models.User.objects.get(id=user_id)
-#         except api_models.User.DoesNotExist:
-#             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-#         try:
-#             follow = api_models.Follow.objects.get(follower=follower, following=following)
-#         except api_models.Follow.DoesNotExist:
-#             return Response({"error": "You are not following this user"}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         follow.delete()
-#         return Response({"message": "Unfollowed successfully"}, status=status.HTTP_200_OK)
-   
-
 # def generate_numeric_otp(length=7):
 #         # Generate a random 7-digit OTP
 #         otp = ''.join([str(random.randint(0, 9)) for _ in range(length)])
@@ -286,7 +246,7 @@ class PostCategoryListAPIView(generics.ListAPIView):
             category = api_models.Category.objects.get(slug=category_slug)
         except api_models.category.DoesNotExist:
             raise NotFound()
-        return api_models.Post.objects.filter(category=category, status="Active")
+        return api_models.Post.objects.filter(category=category, status="Published")
     
 
 class SearchPostsView(generics.ListAPIView):
@@ -297,7 +257,7 @@ class SearchPostsView(generics.ListAPIView):
     def get_queryset(self):
         query = self.request.GET.get('query', '')
         if query:
-            return api_models.Post.objects.filter(title__icontains=query, status="Active").order_by('-date')
+            return api_models.Post.objects.filter(title__icontains=query, status="Published").order_by('-date')
         return api_models.Post.objects.none()
 
     
@@ -330,7 +290,7 @@ class PostDetailAPIView(generics.RetrieveAPIView):
 
     def get_object(self):
         slug = self.kwargs['slug']
-        post = api_models.Post.objects.get(slug=slug, status="Active")
+        post = api_models.Post.objects.get(slug=slug, status="Published")
         return post
 
 
@@ -340,7 +300,7 @@ class IncrementPostView(generics.UpdateAPIView):
     def post(self, request, *args, **kwargs):
         slug = self.kwargs['slug']
         try:
-            post = api_models.Post.objects.get(slug=slug, status="Active")
+            post = api_models.Post.objects.get(slug=slug, status="Published")
             post.view += 1
             post.save()
             return Response({'status': 'view counted'}, status=status.HTTP_200_OK)
@@ -369,7 +329,7 @@ class LikePostAPIView(APIView):
             # Si el usuario ya dio like al post
             if user in post.likes.all():
                 post.likes.remove(user)
-                return Response({"message": "Post Disliked"}, status=status.HTTP_200_OK)
+                return Response(status=status.HTTP_200_OK)
             else:
                 post.likes.add(user)
 
@@ -458,7 +418,7 @@ class BookmarkPostAPIView(APIView):
             if bookmark:
                 # Eliminar el post de los marcados
                 bookmark.delete()
-                return Response({"message": "Post Un-Bookmarked"}, status=status.HTTP_200_OK)
+                return Response(status=status.HTTP_200_OK)
             else:
                 api_models.Bookmark.objects.create(
                     user=user,
@@ -614,7 +574,8 @@ class DashboardPostCreateAPIView(generics.CreateAPIView):
         user_id = request.data.get('user_id')
         title = request.data.get('title')
         image = request.data.get('image')
-        description = request.data.get('description')
+        preview = request.data.get('preview')
+        content = request.data.get('content')
         tags = request.data.get('tags')
         category_id = request.data.get('category')
         post_status = request.data.get('post_status')
@@ -627,7 +588,8 @@ class DashboardPostCreateAPIView(generics.CreateAPIView):
             user=user,
             title=title,
             image=image,
-            description=description,
+            content = content,
+            preview=preview,
             tags=tags,
             category=category,
             status=post_status
@@ -669,13 +631,3 @@ class DashboardPostEditAPIView(generics.RetrieveUpdateDestroyAPIView):
         post_instance.save()
 
         return Response({"message": "Post Updated Successfully"}, status=status.HTTP_200_OK)
-
-
-# {
-#     "title": "New post",
-#     "image": "",
-#     "description": "lorem",
-#     "tags": "tags, here",
-#     "category_id": 1,
-#     "post_status": "Active"
-# }
