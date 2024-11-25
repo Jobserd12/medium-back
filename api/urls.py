@@ -18,16 +18,18 @@ urlpatterns = [
     path('post/increment-view/<slug>/', views.IncrementPostView.as_view()),
     path('post/search/', views.SearchPostsView.as_view()),
 
+    path('admin/posts/<str:username>/', views.PostsList.as_view()), 
     path('admin/post/like-post/', views.LikePostAPIView.as_view()),
     path('admin/post/bookmark-post/', views.BookmarkPostAPIView.as_view()),
-    path('admin/post/comment-post/', views.PostCommentAPIView.as_view()),
     path('admin/stats/<user_id>/', views.DashboardStats.as_view()),
-    path('admin/post-list/<user_id>/', views.DashboardPostLists.as_view()),
     path('admin/comment-list/', views.DashboardCommentLists.as_view()),
     path('admin/noti-list/<user_id>/', views.DashboardNotificationLists.as_view()),
     path('admin/notifications/<int:pk>/', views.NotificationDeleteAPIView.as_view(), name='notification-delete'),
     path('admin/noti-mark-seen/', views.DashboardMarkNotiSeenAPIView.as_view()),
-    path('admin/reply-comment/', views.DashboardPostCommentAPIView.as_view()),
+    
+    path('admin/post/comments/', views.CommentViewSet.as_view(), name='comments'),
+    path('admin/post/reply-comments/', views.CommentReplyViewSet.as_view()),
+
     path('admin/post-create/', views.DashboardPostCreateAPIView.as_view()),
     path('admin/post-detail/<user_id>/<post_id>/', views.DashboardPostEditAPIView.as_view()),
 

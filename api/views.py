@@ -29,6 +29,8 @@ from datetime import datetime
 import json
 import random
 
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from django.contrib.auth import get_user_model
 from api import serializer as api_serializer
 from api import models as api_models
 
@@ -287,11 +289,18 @@ class PopularPostsAPIView(generics.ListAPIView):
 class PostDetailAPIView(generics.RetrieveAPIView):
     serializer_class = api_serializer.PostSerializer
     permission_classes = [AllowAny]
+    queryset = api_models.Post.objects.all()
+    lookup_field = 'slug'
 
     def get_object(self):
-        slug = self.kwargs['slug']
-        post = api_models.Post.objects.get(slug=slug, status="Published")
-        return post
+        try:
+            slug = self.kwargs['slug']
+            return api_models.Post.objects.get(
+                slug=slug,
+                status="Published"
+            )
+        except api_models.Post.DoesNotExist:
+            raise Http404("Post no encontrado")
 
 
 class IncrementPostView(generics.UpdateAPIView):
@@ -352,49 +361,329 @@ class LikePostAPIView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class PostCommentAPIView(APIView):
+
+class CommentViewSet(APIView):
+    permission_classes = [IsAuthenticated, ]
+    
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 'post_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'name': openapi.Schema(type=openapi.TYPE_STRING),
-                'email': openapi.Schema(type=openapi.TYPE_STRING),
-                'comment': openapi.Schema(type=openapi.TYPE_STRING),
+                'content': openapi.Schema(type=openapi.TYPE_STRING),
             },
+            required=['post_id', 'content']
         ),
+        responses={201: api_serializer.CommentSerializer()}
+    )
+   
+
+    def post(self, request):
+        """Crear un nuevo comentario principal"""
+        try:
+            # Obtener el post al que pertenece el comentario
+            post = get_object_or_404(api_models.Post, id=request.data['post_id'])
+            
+            # Crear el comentario principal
+            comment = api_models.Comment.objects.create(
+                post=post,
+                author=request.user,
+                content=request.data['content']
+            )
+            
+            serializer = api_serializer.CommentSerializer(comment, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'post_id',
+                openapi.IN_QUERY,
+                description="ID del post",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ],
+        responses={200: api_serializer.CommentSerializer(many=True)}
+    )
+    
+    def get(self, request):
+        """Obtener todas las respuestas de un comentario"""
+        comment_id = request.query_params.get('comment_id')
+        if not comment_id:
+            return Response(
+                {"error": "comment_id es requerido"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        parent_comment = get_object_or_404(api_models.Comment, id=comment_id)
+        # Usar comment_replies en lugar de replies
+        replies = parent_comment.comment_replies.all()
+        
+        serializer = api_serializer.CommentSerializer(
+            replies, 
+            many=True, 
+            context={'request': request}
+        )
+        return Response(serializer.data)
+    
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'comment_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'content': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            required=['comment_id', 'content']
+        ),
+        responses={200: api_serializer.CommentSerializer()}
+    )
+    def put(self, request):
+        """Actualizar un comentario"""
+        try:
+            comment = get_object_or_404(
+                api_models.Comment, 
+                id=request.data['comment_id']
+            )
+            
+            comment.content = request.data['content']
+            comment.save()
+            
+            serializer = api_serializer.CommentSerializer(
+                comment, 
+                context={'request': request}
+            )
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'comment_id',
+                openapi.IN_QUERY,
+                description="ID del comentario a eliminar",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ]
+    )
+
+    def delete(self, request):
+        """Eliminar un comentario y todas sus respuestas relacionadas de forma permanente"""
+        try:
+            comment_id = request.query_params.get('comment_id')
+            if not comment_id:
+                return Response(
+                    {"error": "comment_id es requerido"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Obtener el comentario original
+            comment = get_object_or_404(api_models.Comment, id=comment_id)
+
+            # Eliminar en una única transacción
+            with transaction.atomic():
+                # 1. Primero eliminar todas las respuestas relacionadas y sus historiales
+                replies = comment.replies.all()
+                for reply in replies:
+                    # Asegurarnos de eliminar cualquier relación primero
+                    reply.replies.clear()  
+                    # Eliminar la respuesta completamente
+                    api_models.Comment.objects.filter(id=reply.id).delete()
+
+                # 2. Eliminar el comentario principal completamente
+                api_models.Comment.objects.filter(id=comment_id).delete()
+
+            return Response(
+                {"message": "Comentario y respuestas relacionadas eliminados exitosamente"},
+                status=status.HTTP_204_NO_CONTENT
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class CommentReplyViewSet(APIView):
+    permission_classes = [IsAuthenticated, ]
+    
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'comment_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'content': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            required=['comment_id', 'content']
+        ),
+        responses={201: api_serializer.CommentSerializer()}
     )
     
     def post(self, request):
-        post_id = request.data['post_id']
-        name = request.data['name']
-        email = request.data['email']
-        comment = request.data['comment']
-        user_id = request.data['user_id']
+        """Crear una nueva respuesta a un comentario"""
+        try:
+            parent_comment = get_object_or_404(
+                api_models.Comment, 
+                id=request.data['comment_id']
+            )
+            
+            reply = api_models.Comment.objects.create(
+                post=parent_comment.post,  
+                author=request.user,
+                content=request.data['content']
+            )
+            
+            parent_comment.replies.add(reply)
+            
+            api_models.Notification.objects.create(
+                user=parent_comment.author,  
+                post=parent_comment.post,
+                type="Comment", 
+                actor=request.user,
+            )
+            
+            serializer = api_serializer.CommentSerializer(reply, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'post_id',
+                openapi.IN_QUERY,
+                description="ID del post",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ],
+        responses={200: api_serializer.CommentSerializer(many=True)}
+    )
 
-        user = api_models.User.objects.get(id=user_id)
-        post = api_models.Post.objects.get(id=post_id)
-
-        # Create Comment
-        api_models.Comment.objects.create(
-            post=post,
-            name=name,
-            email=email,
-            comment=comment,
+    def get(self, request):
+        """Obtener todas las respuestas de un comentario"""
+        comment_id = request.query_params.get('comment_id')
+        if not comment_id:
+            return Response(
+                {"error": "comment_id es requerido"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        parent_comment = get_object_or_404(api_models.Comment, id=comment_id)
+        replies = parent_comment.replies.all()
+        
+        serializer = api_serializer.CommentSerializer(
+            replies, 
+            many=True, 
+            context={'request': request}
         )
+        return Response(serializer.data)
 
-        # Notification
-        api_models.Notification.objects.create(
-            user=post.user,
-            post=post,
-            type="Comment",
-            actor=user,
-        )
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'reply_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'content': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            required=['reply_id', 'content']
+        ),
+        responses={200: api_serializer.CommentSerializer()}
+    )
+    def put(self, request):
+        """Actualizar una respuesta"""
+        try:
+            reply = get_object_or_404(
+                api_models.Comment, 
+                id=request.data['reply_id']
+            )
+            
+            # Verificar que sea una respuesta y no un comentario principal
+            parent_comments = reply.comment_replies.all()
+            if not parent_comments.exists():
+                return Response(
+                    {"error": "El comentario especificado no es una respuesta"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            reply.content = request.data['content']
+            reply.save()
+            
+            serializer = api_serializer.CommentSerializer(
+                reply, 
+                context={'request': request}
+            )
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        return Response({"message": "Commented Sent"}, status=status.HTTP_201_CREATED)
- 
- 
- 
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'reply_id',
+                openapi.IN_QUERY,
+                description="ID de la respuesta a eliminar",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ]
+    )
+    def delete(self, request):
+        """Eliminar una respuesta"""
+        try:
+            reply_id = request.query_params.get('reply_id')
+            if not reply_id:
+                return Response(
+                    {"error": "reply_id es requerido"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            reply = get_object_or_404(api_models.Comment, id=reply_id)
+            
+            parent_comments = reply.comment_replies.all()
+            if not parent_comments.exists():
+                return Response(
+                    {"error": "El comentario especificado no es una respuesta"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            
+            reply.delete()
+            return Response(
+                {"message": "Respuesta eliminada exitosamente"},
+                status=status.HTTP_204_NO_CONTENT
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+
+
 class BookmarkPostAPIView(APIView):
     @swagger_auto_schema(
         request_body=openapi.Schema(
@@ -474,15 +763,21 @@ class DashboardStats(generics.ListAPIView):
         return Response(serializer.data)
 
 
-class DashboardPostLists(generics.ListAPIView):
+class PostsList(generics.ListAPIView):
     serializer_class = api_serializer.PostSerializer
     permission_classes = [AllowAny]
-
+    
     def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = api_models.User.objects.get(id=user_id)
+        username = self.kwargs['username']
+        user = api_models.User.objects.get(username=username)
 
-        return api_models.Post.objects.filter(user=user).order_by("-id")
+        if user:
+            return api_models.Post.objects.filter(user=user).order_by("-id")
+            
+        if self.request.user.is_authenticated:
+            return api_models.Post.objects.filter(user=self.request.user).order_by("-id")
+            
+        return api_models.Post.objects.none()
 
 
 class DashboardCommentLists(generics.ListAPIView):
@@ -539,66 +834,57 @@ class NotificationDeleteAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-
-class DashboardPostCommentAPIView(APIView):
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'comment_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'reply': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-    )
-    
-    #!! ESTA REEMPLAZANDO LOS COMENTAREOS POR EL ACTUAL
-    #!! Se rompe al no encontrar el id del comentareo
-    
-    def post(self, request):
-        comment_id = request.data['comment_id']
-        reply = request.data['reply']
-
-        comment = api_models.Comment.objects.get(id=comment_id)
-        comment.reply = reply
-        comment.save()
-
-        return Response({"message": "Comment Response Sent"}, status=status.HTTP_201_CREATED)
-    
-
-
 class DashboardPostCreateAPIView(generics.CreateAPIView):
     serializer_class = api_serializer.PostSerializer
     permission_classes = [AllowAny]
 
     def create(self, request, *args, **kwargs):
-        user_id = request.data.get('user_id')
-        title = request.data.get('title')
-        image = request.data.get('image')
-        preview = request.data.get('preview')
-        content = request.data.get('content')
-        tags = request.data.get('tags')
-        category_id = request.data.get('category')
-        post_status = request.data.get('post_status')
+        try:
+            # Obtener datos del request
+            user_id = request.data.get('user_id')
+            category_id = request.data.get('category')
+            
+            # Verificar que existan usuario y categoría
+            try:
+                user = api_models.User.objects.get(id=user_id)
+                category = api_models.Category.objects.get(id=category_id)
+            except api_models.User.DoesNotExist:
+                return Response({"error": "Usuario no encontrado"}, status=status.HTTP_404_NOT_FOUND)
+            except api_models.Category.DoesNotExist:
+                return Response({"error": "Categoría no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Crear el diccionario de datos para el serializer
+            post_data = {
+                'user': user.id,
+                'title': request.data.get('title'),
+                'image': request.data.get('image'),
+                'preview': request.data.get('preview'),
+                'content': request.data.get('content'),
+                'tags': request.data.get('tags'),
+                'category': category.id,
+                'status': request.data.get('post_status')
+            }
+            
+            # Usar el serializer para validar y crear el post
+            serializer = self.get_serializer(data=post_data)
+            serializer.is_valid(raise_exception=True)
+            post = serializer.save()
+            
+            return Response({
+                "message": "Post Created Successfully",
+                "post": {
+                    "id": post.id,
+                    "slug": post.slug,
+                    "title": post.title
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        #!! Agregar excepciones en caso de el usuario o la categoria no exista
-        user = api_models.User.objects.get(id=user_id)
-        category = api_models.Category.objects.get(id=category_id)
-
-        post = api_models.Post.objects.create(
-            user=user,
-            title=title,
-            image=image,
-            content = content,
-            preview=preview,
-            tags=tags,
-            category=category,
-            status=post_status
-        )
-
-        return Response({"message": "Post Created Successfully"}, status=status.HTTP_201_CREATED)
 
 
-
+# Views.py
 class DashboardPostEditAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = api_serializer.PostSerializer
     permission_classes = [AllowAny]
@@ -611,23 +897,49 @@ class DashboardPostEditAPIView(generics.RetrieveUpdateDestroyAPIView):
 
     def update(self, request, *args, **kwargs):
         post_instance = self.get_object()
-
+        
+        # Obtener datos del request
         title = request.data.get('title')
         image = request.data.get('image')
-        description = request.data.get('description')
+        preview = request.data.get('preview')  # Cambiado de 'description' a 'preview'
+        content = request.data.get('content')  # Agregado el campo content
         tags = request.data.get('tags')
         category_id = request.data.get('category')
         post_status = request.data.get('post_status')
 
-        category = api_models.Category.objects.get(id=category_id)
-
-        post_instance.title = title
-        if image != "undefined":
-            post_instance.image = image
-        post_instance.description = description
-        post_instance.tags = tags
-        post_instance.category = category
-        post_instance.status = post_status
-        post_instance.save()
-
-        return Response({"message": "Post Updated Successfully"}, status=status.HTTP_200_OK)
+        try:
+            category = api_models.Category.objects.get(id=category_id)
+            
+            # Actualizar los campos
+            post_instance.title = title
+            if image != "undefined":
+                post_instance.image = image
+            post_instance.preview = preview  # Cambiado de description a preview
+            post_instance.content = content  # Agregado el content
+            post_instance.tags = tags
+            post_instance.category = category
+            post_instance.status = post_status
+            
+            post_instance.save()
+            
+            return Response({
+                "message": "Post Updated Successfully",
+                "post": {
+                    "id": post_instance.id,
+                    "title": post_instance.title,
+                    "preview": post_instance.preview,
+                    "content": post_instance.content,
+                    "image": post_instance.image.url if post_instance.image else None
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except api_models.Category.DoesNotExist:
+            return Response(
+                {"error": "Category not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )

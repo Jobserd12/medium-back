@@ -16,7 +16,7 @@ class PostAdmin(admin.ModelAdmin):
     list_display = ["title","user","category","view"]
 
 class CommentAdmin(admin.ModelAdmin):
-    list_display = ["post","name","email","comment"]
+    list_display = ["post", "author", "content", "created_at", "updated_at"]
 
 class BookmarkAdmin(admin.ModelAdmin):
     list_display = ["user","post"]

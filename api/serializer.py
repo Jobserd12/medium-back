@@ -61,16 +61,13 @@ class UserSerializer(serializers.ModelSerializer):
         model = api_models.User
         fields = '__all__'
 
+
 class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = api_models.Profile
         fields = '__all__'
 
-    # def to_representation(self, instance):
-    #     response = super().to_representation(instance)
-    #     response['user'] = UserSerializer(instance.user).data
-    #     return response
 
 # class PasswordResetSerializer(serializers.Serializer):
 #     email = serializers.EmailField()
@@ -117,21 +114,29 @@ class CategorySerializer(serializers.ModelSerializer):
     #     else:
     #         self.Meta.depth = 3
 
-
 class CommentSerializer(serializers.ModelSerializer):
-    user_profile = ProfileSerializer(source='post.user.profile') 
+    replies = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+    author_profile_image = serializers.SerializerMethodField()
 
     class Meta:
         model = api_models.Comment
-        fields = ['id', 'name', 'comment', 'user_profile', 'date', 'reply'] 
+        fields = ['id', 'post', 'author', 'author_name', 'author_profile_image', 'content',
+                 'replies', 'created_at', 'updated_at']
+        read_only_fields = ['author', 'created_at', 'updated_at']
 
-    def __init__(self, *args, **kwargs):
-        super(CommentSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 0
+    def get_replies(self, obj):
+        replies = obj.comment_replies.all()
+        # Pasar el contexto al serializer anidado
+        return CommentSerializer(replies, many=True, context=self.context).data
+
+    def get_author_profile_image(self, obj):
+        if obj.author and hasattr(obj.author, 'profile'):
+            return obj.author.profile.image.url if obj.author.profile.image else None
+        return None
+
+    def get_author_name(self, obj):
+        return obj.author.username if obj.author else "Anónimo"
 
 
 class BookmarkSerializer(serializers.ModelSerializer):
@@ -150,14 +155,16 @@ class BookmarkSerializer(serializers.ModelSerializer):
             self.Meta.depth = 2
     
 
-class PostSerializer(serializers.ModelSerializer):
-    comments = CommentSerializer(many=True)
-    profile = ProfileSerializer(source='user.profile', read_only=True) 
-    bookmarks = BookmarkSerializer(many=True, source='bookmark_set')
 
+class PostSerializer(serializers.ModelSerializer):
+    comments = CommentSerializer(many=True, read_only=True)
+    profile = ProfileSerializer(source='user.profile', read_only=True)
+    bookmarks = BookmarkSerializer(many=True, source='bookmark_set', read_only=True)
+    
     class Meta:
         model = api_models.Post
         fields = "__all__"
+        read_only_fields = ['slug', 'date', 'view']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -168,14 +175,14 @@ class PostSerializer(serializers.ModelSerializer):
         }
         representation['user'] = user_representation
         return representation
-    
+
     def __init__(self, *args, **kwargs):
         super(PostSerializer, self).__init__(*args, **kwargs)
         request = self.context.get('request')
         if request and request.method == 'POST':
             self.Meta.depth = 0
         else:
-            self.Meta.depth = 3
+            self.Meta.depth = 4
 
 
 class NotificationSerializer(serializers.ModelSerializer):  

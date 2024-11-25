@@ -52,13 +52,12 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     image = models.FileField(upload_to="image", default="default/default-user.webp", null=True, blank=True)
     full_name = models.CharField(max_length=100, null=True, blank=True)
-    bio = models.TextField(max_length=160, null=True, blank=True)
-    author = models.BooleanField(default=False)
+    bio = models.TextField(max_length=160, null=True, blank=True, default="This user prefers to keep an air of mystery about them.") 
     country = models.CharField(max_length=100, null=True, blank=True)
     facebook = models.CharField(max_length=100, null=True, blank=True)
     twitter = models.CharField(max_length=100, null=True, blank=True)
     instagram = models.CharField(max_length=100, null=True, blank=True)
-    date = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         if self.full_name:
@@ -102,7 +101,7 @@ class Category(models.Model):
         return self.name
 
     class Meta:
-        verbose_name_plural = "Category" 
+        verbose_name_plural = "Categories" 
         db_table = 'category' 
 
     def save(self, *args, **kwargs): 
@@ -112,6 +111,7 @@ class Category(models.Model):
 
     def post_count(self): 
         return Post.objects.filter(category=self).count()  
+
 
 class Post(models.Model):
     STATUS = ( 
@@ -123,7 +123,6 @@ class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=100) 
     image = models.FileField(upload_to="image", default="default/default-image-post.webp", null=True, blank=True)
-    image = models.FileField(upload_to="image", null=True, blank=True)
     preview = models.TextField(null=True, blank=True, max_length=200) 
     content = models.TextField(null=False, blank=False)
     tags = models.CharField(max_length=100)  
@@ -142,30 +141,30 @@ class Post(models.Model):
         verbose_name_plural = "Post"
 
     def save(self, *args, **kwargs):
-        if self.slug == "" or self.slug == None:
+        if not self.slug:  # Cambiado para mayor claridad
             self.slug = slugify(self.title) + "-" + shortuuid.uuid()[:2]
-        if self.preview == "" or self.preview == None:
-            self.preview = strip_tags(self.content)[:200] 
-        super(Post, self).save(*args, **kwargs)
-    
+        if not self.preview: 
+            self.preview = strip_tags(self.content)[:200]
+        super().save(*args, **kwargs)
+
     def comments(self):
         return Comment.objects.filter(post=self).order_by("-id")
 
-    
-class Comment(models.Model):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-    name = models.CharField(max_length=100)
-    email = models.CharField(max_length=100)
-    comment = models.TextField()
-    reply = models.TextField(null=True, blank=True)
-    date = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.post.title} - {self.name}"
-    
+class Comment(models.Model):
+    post = models.ForeignKey('Post', on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='authored_comments', null=True, blank=True)
+    content = models.CharField(max_length=500, null=True, blank=True)  # Agregar null=True temporalmente
+    replies = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='comment_replies')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'comment' 
-        verbose_name_plural = "Comment"
+        db_table = 'comment'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Comment {self.author.username} en {self.post.title}"
 
 
 class Bookmark(models.Model):
